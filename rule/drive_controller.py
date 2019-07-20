@@ -13,7 +13,7 @@ from abc import abstractmethod
 enable_api_control = True  # True(Controlled by code) /False(Controlled by keyboard)
 current_clock_speed = 1
 no_control_interval_limit = 10000  # milli seconds
-way_point_unit = 10  # meter
+way_point_unit = 10  # (meter) DO NOT CHANGE THIS VALUE
 ############################
 
 
@@ -97,6 +97,7 @@ class DrivingController():
             sensing_info.track_forward_angles = util.get_track_forward_angle(car_state, self.way_points, lap_check_point_index)
             sensing_info.track_forward_obstacles = util.get_track_forward_obstacle(car_state, self.way_points, lap_check_point_index, self.all_obstacles)
             sensing_info.opponent_cars_info = util.get_opponent_info(car_state, self.opponent_cars, self.way_points, lap_check_point_index)
+            sensing_info.distance_to_way_points = util.get_distance_to_way_points(car_state, self.way_points, lap_check_point_index)
 
             car_controls.steering = 0
             car_controls.throttle = 0
@@ -190,6 +191,9 @@ class DrivingController():
                 obstacle_points_raw_trans = [item[0]+(json_pos.x_val*-1),item[1]+(json_pos.y_val*-1),0.0]
                 obstacle_points_revised.append(obstacle_points_raw_trans)
 
+        if len(way_points_revised) == 188:
+            del way_points_revised[187]
+
         return np.array(way_points_revised), np.array(obstacle_points_revised)
 
     def getJosnfile(self):
@@ -270,11 +274,11 @@ class DrivingUtil:
         return np.cross(v1, v2)[2] < 0
 
     def get_current_obstacle_info_full_scan(self, obstacle_point, way_points):
-        last_index = len(way_points) - 1
+        way_points_cnt = len(way_points)
         min_dist = 999999
-        min_index = last_index
+        min_index = way_points_cnt - 1
 
-        for x in range(0, last_index):
+        for x in range(0, way_points_cnt):
             calc_dist = LA.norm(way_points[x] - obstacle_point)
             if calc_dist < min_dist:
                 min_dist = calc_dist
@@ -283,18 +287,30 @@ class DrivingUtil:
         candidate_prev_index = self.get_next_N_waypoint_index(min_index, -1, way_points)
         candidate_next_index = self.get_next_N_waypoint_index(min_index, +1, way_points)
 
+        dist_wp_prev = LA.norm(way_points[min_index] - way_points[candidate_prev_index])
+        dist_wp_next = LA.norm(way_points[candidate_next_index] - way_points[min_index])
+
         prev_dist = LA.norm(obstacle_point - way_points[candidate_prev_index])
         next_dist = LA.norm(obstacle_point - way_points[candidate_next_index])
 
-        if prev_dist >= next_dist:
-            wp_idx_1 = min_index
-            wp_idx_2 = candidate_next_index
+        if dist_wp_prev < 8 or dist_wp_next < 8 or dist_wp_prev > 12 or dist_wp_next > 12:
+            if prev_dist * dist_wp_next >= next_dist * dist_wp_prev:
+                wp_idx_1 = min_index
+                wp_idx_2 = candidate_next_index
+            else:
+                wp_idx_1 = candidate_prev_index
+                wp_idx_2 = min_index
         else:
-            wp_idx_1 = candidate_prev_index
-            wp_idx_2 = min_index
+            if prev_dist >= next_dist:
+                wp_idx_1 = min_index
+                wp_idx_2 = candidate_next_index
+            else:
+                wp_idx_1 = candidate_prev_index
+                wp_idx_2 = min_index
 
-        dist_from_wp1 = self.get_dist_to_intersection_point(obstacle_point, way_points[wp_idx_1], way_points[wp_idx_2])
-        dist_from_wp1 = way_point_unit if dist_from_wp1 > way_point_unit else 0 if dist_from_wp1 < 0 else dist_from_wp1
+        distance_unit = self.get_distance_unit(way_points, wp_idx_1, wp_idx_2)
+        dist_from_wp1 = self.get_dist_to_intersection_point(obstacle_point, way_points, wp_idx_1, wp_idx_2)
+        dist_from_wp1 = distance_unit if dist_from_wp1 > distance_unit else 0 if dist_from_wp1 < 0 else dist_from_wp1
         dist_from_wp1 = round(dist_from_wp1, 2)
 
         to_middle = LA.norm(
@@ -313,24 +329,28 @@ class DrivingUtil:
             obstacle_sectors.append(self.get_current_obstacle_info_full_scan(x, way_points))
         return obstacle_sectors
 
-    def get_dist_to_intersection_point(self, object_pt, prev_pt, next_pt):
+    def get_dist_to_intersection_point(self, object_pt, way_points, prev, next):
+        prev_pt = way_points[prev]
+        next_pt = way_points[next]
+        distance_unit = self.get_distance_unit(way_points, prev, next)
+
         cosine_val = np.dot(object_pt - prev_pt, next_pt - prev_pt) \
                      / LA.norm(next_pt - prev_pt) / LA.norm(object_pt - prev_pt)
         portion = LA.norm(object_pt - prev_pt) * cosine_val / LA.norm(next_pt - prev_pt)
-        dist = way_point_unit * portion
-        return way_point_unit if dist > way_point_unit else 0 if dist < 0 else dist
+        dist = distance_unit * portion
+        return distance_unit if dist > distance_unit else 0 if dist < 0 else dist
 
     def get_current_way_points(self, car_state, way_points, check_point):
         pd = car_state.kinematics_estimated.position
         car_pt = np.array([pd.x_val, pd.y_val, 0])
 
         if check_point == False:
-            first, last = -1, 10
+            first, last = -2, 10
         else:
-            first = self.get_next_N_waypoint_index(check_point, -1, way_points)
+            first = self.get_next_N_waypoint_index(check_point, -2, way_points)
             last = self.get_next_N_waypoint_index(check_point, 10, way_points)
 
-        max_index = len(way_points) - 1
+        max_index = len(way_points)
         min_dist = 100000
         min_dist_idx = 0
 
@@ -356,12 +376,22 @@ class DrivingUtil:
         min_dist_prev_idx = self.get_next_N_waypoint_index(min_dist_idx, -1, way_points)
         min_dist_next_idx = self.get_next_N_waypoint_index(min_dist_idx, 1, way_points)
 
+        dist_wp_prev = LA.norm(way_points[min_dist_idx] - way_points[min_dist_prev_idx])
+        dist_wp_next = LA.norm(way_points[min_dist_next_idx] - way_points[min_dist_idx])
+
         calc_dist_prev = LA.norm(way_points[min_dist_prev_idx] - car_pt)
         calc_dist_next = LA.norm(way_points[min_dist_next_idx] - car_pt)
-        if calc_dist_prev < calc_dist_next:
-            return min_dist_prev_idx, min_dist_idx
+
+        if dist_wp_prev < 8 or dist_wp_next < 8 or dist_wp_prev > 12 or dist_wp_next > 12:
+            if calc_dist_prev * dist_wp_next < calc_dist_next * dist_wp_prev:
+                return min_dist_prev_idx, min_dist_idx
+            else:
+                return min_dist_idx, min_dist_next_idx
         else:
-            return min_dist_idx, min_dist_next_idx
+            if calc_dist_prev < calc_dist_next:
+                return min_dist_prev_idx, min_dist_idx
+            else:
+                return min_dist_idx, min_dist_next_idx
 
     def get_speed(self, car_state):
         return round(car_state.speed * 3.6, 2)
@@ -418,11 +448,21 @@ class DrivingUtil:
         else:
             return angle
 
+    driving_check = 0
+    lap_check = False
     def get_progress(self, car_state, way_points, check_point, cur_lab, total_lap=2):
         prev, next = self.get_current_way_points(car_state, way_points, check_point)
+        if next == 100:
+            self.driving_check = cur_lab
+        if self.lap_check is False and cur_lab == 2 and next == 0:
+            self.lap_check = True
+        if next == 0 and self.driving_check > 0:
+            cur_lab = self.driving_check + 1
         curr = next + (len(way_points)-1) * (cur_lab - 1)
         total = (len(way_points)-1) * total_lap
         returnValue = round((curr/total) * 100 , 2)
+        if self.lap_check is False and returnValue > 50:
+            returnValue = 50.0
         return returnValue
 
     def get_track_forward_angle(self, car_state, way_points, check_point):
@@ -449,10 +489,11 @@ class DrivingUtil:
         pd = car_state.kinematics_estimated.position
         car_pt = np.array([pd.x_val, pd.y_val, 0])
 
-        car_dist_from_prev = self.get_dist_to_intersection_point(car_pt, way_points[prev], way_points[next])
-        car_dist_to_next = way_point_unit - car_dist_from_prev
+        distance_unit = self.get_distance_unit(way_points, prev, next)
+        car_dist_from_prev = self.get_dist_to_intersection_point(car_pt, way_points, prev, next)
+        car_dist_to_next = distance_unit - car_dist_from_prev
 
-        for x in range(0, 9):
+        for x in range(0, 10):
             t1 = self.get_next_N_waypoint_index(next, x, way_points)
             t2 = self.get_next_N_waypoint_index(next, x + 1, way_points)
             for obs in all_obstacles:
@@ -479,21 +520,30 @@ class DrivingUtil:
                 range_indexes.append(idx)
         return range_indexes
 
+    normal_opp_car_pt = []
     def get_opponent_info(self, car_state, opponent_cars, way_points, check_point):
         prev, next = self.get_current_way_points(car_state, way_points, check_point)
         car_pt = self.get_point_of_car_state(car_state)
 
-        car_dist_from_prev = self.get_dist_to_intersection_point(car_pt, way_points[prev], way_points[next])
-        car_dist_to_next = way_point_unit - car_dist_from_prev
+        distance_unit = self.get_distance_unit(way_points, prev, next)
+        car_dist_from_prev = self.get_dist_to_intersection_point(car_pt, way_points, prev, next)
+        car_dist_to_next = distance_unit - car_dist_from_prev
 
         from_point = self.get_prev_N_waypoint_index(prev, 10, way_points)
         to_point = self.get_next_N_waypoint_index(next, 10, way_points)
         range_indexes = self.get_range_indexes_array(from_point, to_point, len(way_points)-1)
 
+        last_wp_index = len(way_points) - 1
         opp_cars = []
         for opp_car in opponent_cars:
             opp_car_state = opp_car["car_state"]
             opp_car_pt = self.get_point_of_car_state(opp_car_state)
+
+            # FILTERING
+            if opp_car_pt[0] == 0 and opp_car_pt[1] == 0 and opp_car_pt[2] == 0:
+                opp_car_pt = self.normal_opp_car_pt
+            else:
+                self.normal_opp_car_pt = [opp_car_pt[0], opp_car_pt[1], opp_car_pt[2]]
 
             opp_car_pt += np.array([opp_car["x"], opp_car["y"], opp_car["z"]])  # REQUIRED
 
@@ -503,13 +553,23 @@ class DrivingUtil:
                 continue
 
             opp_prev_index = range_indexes.index(opp_prev)
+            opp_next_index = range_indexes.index(opp_next)
             if opp_prev_index > 10:
                 dist = opp_dist_from_prev + (opp_prev_index - 11) * way_point_unit + car_dist_to_next
+                for i in range(11, opp_prev_index):
+                    if range_indexes[i] == last_wp_index:
+                        dist = dist - way_point_unit + LA.norm(way_points[0] - way_points[last_wp_index])
+                        break
             elif opp_prev_index == 10:
                 dist = round(opp_dist_from_prev - car_dist_from_prev, 5)
-            else:
-                opp_dist_to_next = way_point_unit - opp_dist_from_prev
+            else: # opp가 뒤
+                opp_distance_unit = self.get_distance_unit(way_points, opp_prev, opp_next)
+                opp_dist_to_next = opp_distance_unit - opp_dist_from_prev
                 dist = opp_dist_to_next + (9 - opp_prev_index) * way_point_unit + car_dist_from_prev
+                for i in range(opp_next_index, 10):
+                    if range_indexes[i] == last_wp_index:
+                        dist = dist - way_point_unit + LA.norm(way_points[0] - way_points[last_wp_index])
+                        break
                 dist *= -1
 
             if abs(dist) > 100:
@@ -521,6 +581,18 @@ class DrivingUtil:
                              "speed": round(opp_car_state.speed, 1)})
             opp_cars = sorted(opp_cars, key=lambda opp_car: abs(opp_car["dist"]))
         return opp_cars
+
+    def get_distance_to_way_points(self, car_state, way_points, check_point):
+        prev, next = self.get_current_way_points(car_state, way_points, check_point)
+        car_pt = self.get_point_of_car_state(car_state)
+
+        dist_arr = []
+        for x in range(0, 10):
+            wp_idx = self.get_next_N_waypoint_index(next, x, way_points)
+            dist = LA.norm(way_points[wp_idx] - car_pt)
+            dist = 0 if dist < 0 else dist
+            dist_arr.append(round(dist, 2))
+        return dist_arr
 
     def get_point_of_car_state(self, car_state):
         pd = car_state.kinematics_estimated.position
@@ -545,6 +617,13 @@ class DrivingUtil:
             prev_index = len(way_points) + prev_index
         return prev_index
 
+    # privates
+    def get_distance_unit(self, way_points, prev, next):
+        distance_unit = way_point_unit
+        if next == 0:
+            distance_unit = round(LA.norm(way_points[next] - way_points[prev]), 4)
+        return distance_unit
+
 
 class CarState:
     def __init__(self, name):
@@ -561,3 +640,4 @@ class CarState:
     track_forward_angles = []
     track_forward_obstacles = []
     opponent_cars_info = []
+    distance_to_way_points = []
