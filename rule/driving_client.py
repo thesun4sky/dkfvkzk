@@ -9,7 +9,7 @@ class DrivingClient(DrivingController):
         # =========================================================== #
         # Editing area starts from here
         #
-        self.is_debug = True
+        self.is_debug = False
         self.collision_flag = True
         self.start = time.time()
         self.tickCount = 0
@@ -41,11 +41,16 @@ class DrivingClient(DrivingController):
         ###########################################################################
         targetPosition = 0
         center = 1.2
-        maxSpeed = 100
-        positionWeight = 1.2
+        maxSpeed = 115
+        brakeSpeed = 90
+        positionWeight = 1.4
         dodgeWeight = 0.7
-        directionWeight = 2
-        futureWeight = 2.5
+        directionWeight = 4.0
+        futureWeight = 2.8
+
+        abs_angle = []
+        for i in range(9):
+            abs_angle.append(abs(sensing_info.track_forward_angles[i]))
 
         if len(sensing_info.track_forward_obstacles):
             print(sensing_info.track_forward_obstacles[0])
@@ -65,25 +70,38 @@ class DrivingClient(DrivingController):
             print("targetPosition: {}, positionWeight: {}".format(targetPosition, positionWeight))
             # sensing_info.to_middle *= 2
 
-        if abs(sum(sensing_info.track_forward_angles)) < 50:
-            throttle = 1
-        elif sensing_info.speed > maxSpeed:
-            throttle = 0
+        final_brake = 0
+
+        if abs(sum(abs_angle)) < 50:
+            directionWeight *= 5
         else:
-            throttle = 1
+            print("max : {}".format(max(abs_angle)))
+
+            if max(abs_angle) > 50:
+                if sensing_info.speed > maxSpeed:
+                    final_brake = 1
+
+            if max(abs_angle) > 90:
+                if sensing_info.speed > brakeSpeed:
+                    final_brake = 1
+
+            # futureWeight += max(abs_angle) / 45
 
         totalWeight = positionWeight + directionWeight + futureWeight
         positionValue = -((sensing_info.to_middle - targetPosition) / 10 * positionWeight)
         directionValue = -(sensing_info.moving_angle / 90 * directionWeight)
-        futureValue = (sensing_info.track_forward_angles[1] * 1.2 + sensing_info.track_forward_angles[2] * 0.2 +
-                       sensing_info.track_forward_angles[3] * 0.1) / 90 * futureWeight * sensing_info.speed / 70
+        futureValue = (sensing_info.track_forward_angles[1] * 1.70 * sensing_info.speed / 90 +
+                       sensing_info.track_forward_angles[2] * 0.90 * sensing_info.speed / 100 +
+                       sensing_info.track_forward_angles[3] * 0.20 * sensing_info.speed / 110 +
+                       sensing_info.track_forward_angles[4] * 0.00 * sensing_info.speed / 120 +
+                       sensing_info.track_forward_angles[5] * 0.00 * sensing_info.speed / 130) / 90 * futureWeight
 
         # Moving straight forward
         car_controls.steering = (positionValue + directionValue + futureValue) / totalWeight
-        car_controls.throttle = throttle
-        car_controls.brake = 0 if sensing_info.speed < 30 else abs(car_controls.steering) * 1.5
-        if self.is_debug:
-            print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
+        car_controls.throttle = 1
+        car_controls.brake = 0 if sensing_info.speed < brakeSpeed else final_brake
+        # if self.is_debug:
+        print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
                                                               car_controls.brake))
         if sensing_info.lap_progress == 100:
             print("time :", time.time() - self.start)
