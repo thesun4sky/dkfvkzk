@@ -17,7 +17,7 @@ class DrivingClient(DrivingController):
         self.totalSpeed = 0
         self.area_range = 2
         self.front_check_point = 3
-        self.check_range = 4
+        self.check_range = 5
         self.area_weight_array = [0, 0, 0, 0, 0, 0, 0] * self.check_range
 
         #
@@ -168,10 +168,7 @@ class DrivingClient(DrivingController):
         area_diff = ideal_area - my_area
         area_angle = sensing_info.track_forward_angles[i] - sensing_info.moving_angle
 
-        weight = abs(area_diff) * 0.2 + 0.1
-        steering = area_angle/20 * weight
-        steering = float(steering * ((self.check_range-i)/10))
-
+        steering = float(area_angle * (abs(area_diff) * 0.15 + 0.1) * (self.check_range-i) * 0.005)
         return steering
 
     def get_throttle_to_area(self, sensing_info, my_area, ideal_area, i):
