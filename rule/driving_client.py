@@ -99,19 +99,19 @@ class DrivingClient(DrivingController):
         return player_name
 
     def get_area(self, to_middle):
-        if to_middle < -self.half_road_limit-self.area_range:
+        if to_middle <= -self.half_road_limit:
             return 0
-        elif to_middle < -self.half_road_limit+self.area_range:
+        elif -self.half_road_limit < to_middle <= -self.half_road_limit+self.area_range:
             return 1
-        elif to_middle < -self.area_range:
+        elif -self.half_road_limit + self.area_range < to_middle < -self.area_range:
             return 2
         elif abs(to_middle) <= self.area_range:
             return 3
         elif self.area_range < to_middle < self.half_road_limit-self.area_range:
             return 4
-        elif self.half_road_limit-self.area_range < to_middle < self.half_road_limit+self.area_range:
+        elif self.half_road_limit-self.area_range <= to_middle < self.half_road_limit:
             return 5
-        elif self.half_road_limit+self.area_range < to_middle:
+        elif self.half_road_limit <= to_middle:
             return 6
         return 0
 
@@ -119,7 +119,7 @@ class DrivingClient(DrivingController):
         pos_weight = 0.3
         curve_weight = 1.2
         # 가운데로 이동하도록 이상점 +
-        point_arr = [1, 1, 2, 3, 2, 1, 1]
+        point_arr = [0.8, 1, 2, 3, 2, 1, 0.8]
 
         # 현재위치에서 가까울수록 이상점수 +
         point_arr[my_area] += pos_weight * 2
