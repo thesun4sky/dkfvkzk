@@ -113,7 +113,8 @@ class DrivingClient(DrivingController):
     def get_ideal_area(self, sensing_info, my_area, i):
         pos_weight = 0.5
         curve_weight = 1.2
-        point_arr = [1, 1, 2, 2, 2, 1, 1]
+        # 가운데로 이동하도록 이상점 +
+        point_arr = [1, 1, 2, 3, 2, 1, 1]
 
         # 현재위치에서 가까울수록 이상점수 +
         point_arr[my_area] += pos_weight * 2
@@ -124,43 +125,27 @@ class DrivingClient(DrivingController):
 
         # 지점에서 전방 30M내에 해당 방향의 커브가 앞에 있을 수록 이상점수 +
         front_curve_angles = sum(sensing_info.track_forward_angles[i:i+self.front_check_point])
-        if 45 < front_curve_angles < 100:
-            point_arr[5] += curve_weight * 3
-            point_arr[4] += curve_weight * 2
-            point_arr[3] += curve_weight * 1
-            point_arr[2] -= curve_weight * 0
-            point_arr[1] -= curve_weight * 1
-            point_arr[0] -= curve_weight * 2
-        if front_curve_angles > 100:
-            point_arr[5] += curve_weight * 6
-            point_arr[4] += curve_weight * 5
-            point_arr[3] += curve_weight * 4
-            point_arr[2] -= curve_weight * 0
-            point_arr[1] -= curve_weight * 1
-            point_arr[0] -= curve_weight * 2
-        elif -100 < front_curve_angles < -45:
-            point_arr[1] += curve_weight * 3
-            point_arr[2] += curve_weight * 2
-            point_arr[3] += curve_weight * 1
-            point_arr[4] -= curve_weight * 0
-            point_arr[5] -= curve_weight * 1
-            point_arr[6] -= curve_weight * 2
-        elif front_curve_angles < -100:
-            point_arr[1] += curve_weight * 6
-            point_arr[2] += curve_weight * 5
-            point_arr[3] += curve_weight * 4
-            point_arr[4] -= curve_weight * 0
-            point_arr[5] -= curve_weight * 1
-            point_arr[6] -= curve_weight * 2
+
+        if abs(front_curve_angles) > 30:
+            direction = 1 if front_curve_angles > 0 else -1
+            curve_point = (pow(front_curve_angles, 2)/2000 + 2.3) * direction
+            point_arr[6] += curve_weight * (curve_point if front_curve_angles < 0 else 0)
+            point_arr[5] += curve_weight * (curve_point*0.8)
+            point_arr[4] += curve_weight * (curve_point*0.6)
+            point_arr[3] += curve_weight * (curve_point*0.4)
+            point_arr[2] -= curve_weight * (curve_point*0.6)
+            point_arr[1] -= curve_weight * (curve_point*0.8)
+            point_arr[0] -= curve_weight * (curve_point if front_curve_angles > 0 else 0)
 
         # 장애물이 있을시 주변 포인트 0
         if len(sensing_info.track_forward_obstacles):
             for obj in sensing_info.track_forward_obstacles:
-                if int(obj['dist']/10) == i:
+                obj_dist = int(obj['dist']/10)
+                if obj_dist == i or obj_dist == i-1 or obj_dist == i+1:
                     obj_area = self.get_area(obj['to_middle'])
-                    point_arr[obj_area] = 0
-                    point_arr[obj_area-1] = 0
-                    point_arr[obj_area+1] = 0
+                    point_arr[obj_area] = -999
+                    point_arr[obj_area+1] = -999
+                    point_arr[obj_area-1] = -999
 
         return point_arr.index(max(point_arr))
 
