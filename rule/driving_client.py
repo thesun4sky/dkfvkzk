@@ -47,16 +47,21 @@ class DrivingClient(DrivingController):
         steering = 0
         throttle = 1
         brake = 0
+        ideal_map = []
 
         my_area = self.get_area(sensing_info.to_middle)
 
         for i in range(self.check_range):
             ideal_area = self.get_ideal_area(sensing_info, my_area, i)
-            print("{} : {}".format(i,ideal_area))
+            ideal_map.append(str(i)+" : "+self.print_area(ideal_area))
             steering += self.get_steering_to_area(sensing_info, my_area, ideal_area, i)
             throttle += self.get_throttle_to_area(sensing_info, my_area, ideal_area, i)
             brake += self.get_brake_to_area(sensing_info, my_area, ideal_area, i)
-        print("")
+
+        for j in range(self.check_range):
+            i = self.check_range-j-1
+            print("{}", ideal_map[i])
+
         # Moving straight forward
         car_controls.steering = steering
         car_controls.throttle = throttle
@@ -111,7 +116,7 @@ class DrivingClient(DrivingController):
         return 0
 
     def get_ideal_area(self, sensing_info, my_area, i):
-        pos_weight = 0.5
+        pos_weight = 0.3
         curve_weight = 1.2
         # 가운데로 이동하도록 이상점 +
         point_arr = [1, 1, 2, 3, 2, 1, 1]
@@ -141,11 +146,11 @@ class DrivingClient(DrivingController):
         if len(sensing_info.track_forward_obstacles):
             for obj in sensing_info.track_forward_obstacles:
                 obj_dist = int(obj['dist']/10)
-                if obj_dist == i or obj_dist == i-1 or obj_dist == i+1:
+                if obj_dist >= i or obj_dist == i-1:
                     obj_area = self.get_area(obj['to_middle'])
                     point_arr[obj_area] = -999
-                    point_arr[obj_area+1] = -999
                     point_arr[obj_area-1] = -999
+                    point_arr[obj_area+1] = -999
 
         return point_arr.index(max(point_arr))
 
@@ -167,6 +172,12 @@ class DrivingClient(DrivingController):
             brake = 0.15
 
         return brake
+
+    def print_area(self, area):
+        map = ""
+        for i in range(7):
+            map += "●" if area == i else "○"
+        return map
 
 if __name__ == '__main__':
     client = DrivingClient()
