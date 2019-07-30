@@ -153,7 +153,7 @@ class DrivingClient(DrivingController):
         area_diff = ideal_area - my_area
         area_angle = sensing_info.track_forward_angles[i] - sensing_info.moving_angle
 
-        steering = float(area_angle * (abs(area_diff) * 0.15 + 0.1) * (self.check_range-i) * 0.005)
+        steering = float(area_angle * (abs(area_diff) * 0.1 + 0.1) * (self.check_range-i) * 0.005)
         return steering
 
     def get_throttle_to_area(self, sensing_info, my_area, ideal_area, i):
@@ -163,8 +163,8 @@ class DrivingClient(DrivingController):
     def get_brake_to_area(self, sensing_info, my_area, ideal_area, i):
         brake = 0
         area_angle = sensing_info.track_forward_angles[i] - sensing_info.moving_angle
-        if i >= 3 and abs(area_angle) > 50 and sensing_info.speed > 90:
-            brake = 0.3
+        if i >= 3 and abs(area_angle) > 50 and sensing_info.speed > 100:
+            brake = 0.15
 
         return brake
 
