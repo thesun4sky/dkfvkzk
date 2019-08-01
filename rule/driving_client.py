@@ -134,13 +134,13 @@ class DrivingClient(DrivingController):
         if abs(front_curve_angles) > 30:
             direction = 1 if front_curve_angles > 0 else -1
             curve_point = (pow(front_curve_angles, 2)/2000 + 2.3) * direction
-            point_arr[6] += curve_weight * (curve_point if front_curve_angles < 0 else 0)
+            point_arr[6] += curve_weight * (curve_point if front_curve_angles < 0 else -10)
             point_arr[5] += curve_weight * (curve_point*0.8)
             point_arr[4] += curve_weight * (curve_point*0.6)
             point_arr[3] += curve_weight * (curve_point*0.4)
             point_arr[2] -= curve_weight * (curve_point*0.6)
             point_arr[1] -= curve_weight * (curve_point*0.8)
-            point_arr[0] -= curve_weight * (curve_point if front_curve_angles > 0 else 0)
+            point_arr[0] -= curve_weight * (curve_point if front_curve_angles > 0 else -10)
 
         # 장애물이 있을시 주변 포인트 0
         if len(sensing_info.track_forward_obstacles):
@@ -149,8 +149,11 @@ class DrivingClient(DrivingController):
                 if obj_dist >= i or obj_dist == i-1:
                     obj_area = self.get_area(obj['to_middle'])
                     point_arr[obj_area] = -999
-                    point_arr[obj_area-1] = -999
-                    point_arr[obj_area+1] = -999
+                    print("obj : {}",self.print_area(obj_area))
+                    if obj_area >= 1:
+                        point_arr[obj_area-1] = -999
+                    if obj_area <= 6:
+                        point_arr[obj_area+1] = -999
 
         return point_arr.index(max(point_arr))
 
