@@ -15,6 +15,7 @@ class DrivingClient(DrivingController):
         self.tick_count = 0
         self.ideal_count = 0
         self.totalSpeed = 0
+        self.map_code = 3
         self.front_check_point = 3
         self.check_range = 5
         self.total_area = 7
@@ -72,6 +73,7 @@ class DrivingClient(DrivingController):
             for j in range(self.check_range):
                 i = self.check_range-j-1
                 print(ideal_total_map[i])
+            print(sensing_info.lap_progress)
             print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
                                                               car_controls.brake))
 
@@ -127,50 +129,68 @@ class DrivingClient(DrivingController):
         point_arr = [-1, 1, 2, 3, 2, 1, -1]
 
         # 현재위치에서 가까울수록 이상점수 +
-        point_arr[my_area] += pos_weight * 2
-        if my_area < 6:
-            point_arr[my_area+1] += pos_weight
-        if my_area > 1:
-            point_arr[my_area-1] += pos_weight
+        self.set_near_my_area_point(my_area, point_arr, pos_weight)
 
         # 지점에서 전방 30M내에 해당 방향의 커브가 앞에 있을 수록 이상점수 +
-        front_curve_angles = sum(sensing_info.track_forward_angles[i:i+self.front_check_point])
+        self.set_curve_point(curve_weight, i, point_arr, sensing_info)
 
+        # 맵별 급커브 대응 포인트 +
+        self.set_map_specified_point(point_arr, sensing_info)
+
+        # 장애물이 있을시 마이너스 가중치로 차선책 찾기 알고리즘 -
+        self.set_obstacles_point(i, my_area, point_arr, sensing_info)
+
+        return point_arr.index(max(point_arr)), self.print_area_value(point_arr)
+
+    def set_near_my_area_point(self, my_area, point_arr, pos_weight):
+        point_arr[my_area] += pos_weight * 2
+        if my_area < 6:
+            point_arr[my_area + 1] += pos_weight
+        if my_area > 1:
+            point_arr[my_area - 1] += pos_weight
+
+    def set_curve_point(self, curve_weight, i, point_arr, sensing_info):
+        front_curve_angles = sum(sensing_info.track_forward_angles[i:i + self.front_check_point])
         if abs(front_curve_angles) > 30:
             direction = 1 if front_curve_angles > 0 else -1
-            curve_point = (pow(front_curve_angles, 2)/2000 + 2.3) * direction
+            curve_point = (pow(front_curve_angles, 2) / 2000 + 2.3) * direction
             point_arr[6] += curve_weight * (curve_point if front_curve_angles < 0 else -10)
-            point_arr[5] += curve_weight * (curve_point*0.8)
-            point_arr[4] += curve_weight * (curve_point*0.6)
-            point_arr[3] += curve_weight * (curve_point*0.4)
-            point_arr[2] -= curve_weight * (curve_point*0.6)
-            point_arr[1] -= curve_weight * (curve_point*0.8)
+            point_arr[5] += curve_weight * (curve_point * 0.8)
+            point_arr[4] += curve_weight * (curve_point * 0.6)
+            point_arr[3] += curve_weight * (curve_point * 0.4)
+            point_arr[2] -= curve_weight * (curve_point * 0.6)
+            point_arr[1] -= curve_weight * (curve_point * 0.8)
             point_arr[0] -= curve_weight * (curve_point if front_curve_angles > 0 else -10)
 
-        # 장애물이 있을시 주변 포인트 0
+    def set_obstacles_point(self, i, my_area, point_arr, sensing_info):
         if len(sensing_info.track_forward_obstacles):
             for obj in sensing_info.track_forward_obstacles:
-                obj_dist = int(obj['dist']/10)
-                if i <= obj_dist <= i + 3 or obj_dist == i-1:
+                obj_dist = int(obj['dist'] / 10)
+                if i <= obj_dist <= i + 3 or obj_dist == i - 1:
                     obj_area = self.get_area(obj['to_middle'])
                     point_arr[obj_area] += -900
                     if obj_area >= 1:
-                        point_arr[obj_area-1] += -800
+                        point_arr[obj_area - 1] += -800
                     if obj_area <= 5:
-                        point_arr[obj_area+1] += -800
+                        point_arr[obj_area + 1] += -800
                     if obj_dist < 40 and abs(obj['to_middle'] - sensing_info.to_middle) < 2:
                         if obj_area >= 2:
                             point_arr[obj_area - 2] += -700
                         if obj_area <= 4:
                             point_arr[obj_area + 2] += -700
                     if obj_area >= my_area:
-                        for j in range(self.total_area-obj_area):
-                                point_arr[obj_area+j] += -600
+                        for j in range(self.total_area - obj_area):
+                            point_arr[obj_area + j] += -600
                     else:
-                        for j in range(obj_area+1):
-                                point_arr[obj_area-j] += -600
+                        for j in range(obj_area + 1):
+                            point_arr[obj_area - j] += -600
 
-        return point_arr.index(max(point_arr)), self.print_area_value(point_arr)
+    def set_map_specified_point(self, point_arr, sensing_info):
+        if self.map_code == 3:
+            if 8.5 < sensing_info.lap_progress < 10.0:
+                point_arr[5] = 900
+
+
 
     def get_steering_to_area(self, sensing_info, my_area, ideal_area, i):
         area_diff = ideal_area - my_area
