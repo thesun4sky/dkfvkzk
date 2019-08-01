@@ -15,9 +15,9 @@ class DrivingClient(DrivingController):
         self.tick_count = 0
         self.ideal_count = 0
         self.totalSpeed = 0
-        self.area_range = 2
         self.front_check_point = 3
         self.check_range = 5
+        self.total_area = 7
         self.area_weight_array = [0, 0, 0, 0, 0, 0, 0] * self.check_range
 
         #
@@ -47,27 +47,32 @@ class DrivingClient(DrivingController):
         steering = 0
         throttle = 1
         brake = 0
-        ideal_map = []
+        ideal_total_map = []
+        self.area_range = self.half_road_limit/5
 
         my_area = self.get_area(sensing_info.to_middle)
 
+        if self.tick_count % 3 == 1:
+            for i in range(7):
+                print("")
+
         for i in range(self.check_range):
-            ideal_area = self.get_ideal_area(sensing_info, my_area, i)
-            ideal_map.append(str(i)+" : "+self.print_area(ideal_area))
+            ideal_area, ideal_map = self.get_ideal_area(sensing_info, my_area, i)
+            ideal_total_map.append(ideal_map)
             steering += self.get_steering_to_area(sensing_info, my_area, ideal_area, i)
             throttle += self.get_throttle_to_area(sensing_info, my_area, ideal_area, i)
             brake += self.get_brake_to_area(sensing_info, my_area, ideal_area, i)
-
-        for j in range(self.check_range):
-            i = self.check_range-j-1
-            print("{}", ideal_map[i])
 
         # Moving straight forward
         car_controls.steering = steering
         car_controls.throttle = throttle
         car_controls.brake = brake
 
-        print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
+        if self.tick_count % 3 == 1:
+            for j in range(self.check_range):
+                i = self.check_range-j-1
+                print(ideal_total_map[i])
+            print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
                                                               car_controls.brake))
 
 
@@ -80,8 +85,8 @@ class DrivingClient(DrivingController):
             if my_area == self.get_ideal_area(sensing_info, my_area, 0):
                 self.ideal_count += 1
 
-            print("accuracy : {}".format(round(self.ideal_count / self.tick_count, 3)))
-            print("avgSpeed : {}", self.totalSpeed / self.tick_count)
+            # print("accuracy : {}".format(round(self.ideal_count / self.tick_count, 3)))
+            # print("avgSpeed : {}", self.totalSpeed / self.tick_count)
         #
         # Editing area ends
         # ==========================================================#
@@ -119,7 +124,7 @@ class DrivingClient(DrivingController):
         pos_weight = 0.3
         curve_weight = 1.2
         # 가운데로 이동하도록 이상점 +
-        point_arr = [0.8, 1, 2, 3, 2, 1, 0.8]
+        point_arr = [-1, 1, 2, 3, 2, 1, -1]
 
         # 현재위치에서 가까울수록 이상점수 +
         point_arr[my_area] += pos_weight * 2
@@ -146,16 +151,26 @@ class DrivingClient(DrivingController):
         if len(sensing_info.track_forward_obstacles):
             for obj in sensing_info.track_forward_obstacles:
                 obj_dist = int(obj['dist']/10)
-                if obj_dist >= i or obj_dist == i-1:
+                if i <= obj_dist <= i + 3 or obj_dist == i-1:
                     obj_area = self.get_area(obj['to_middle'])
-                    point_arr[obj_area] = -999
-                    print("obj : {}",self.print_area(obj_area))
+                    point_arr[obj_area] += -900
                     if obj_area >= 1:
-                        point_arr[obj_area-1] = -999
-                    if obj_area <= 6:
-                        point_arr[obj_area+1] = -999
+                        point_arr[obj_area-1] += -800
+                    if obj_area <= 5:
+                        point_arr[obj_area+1] += -800
+                    if obj_dist < 40 and abs(obj['to_middle'] - sensing_info.to_middle) < 2:
+                        if obj_area >= 2:
+                            point_arr[obj_area - 2] += -700
+                        if obj_area <= 4:
+                            point_arr[obj_area + 2] += -700
+                    if obj_area >= my_area:
+                        for j in range(self.total_area-obj_area):
+                                point_arr[obj_area+j] += -600
+                    else:
+                        for j in range(obj_area+1):
+                                point_arr[obj_area-j] += -600
 
-        return point_arr.index(max(point_arr))
+        return point_arr.index(max(point_arr)), self.print_area_value(point_arr)
 
     def get_steering_to_area(self, sensing_info, my_area, ideal_area, i):
         area_diff = ideal_area - my_area
@@ -170,7 +185,7 @@ class DrivingClient(DrivingController):
 
     def get_brake_to_area(self, sensing_info, my_area, ideal_area, i):
         brake = 0
-        area_angle = sensing_info.track_forward_angles[i] - sensing_info.moving_angle
+        area_angle = sensing_info.track_forward_angles[i]
         if i >= 3 and abs(area_angle) > 50 and sensing_info.speed > 100:
             brake = 0.15
 
@@ -180,6 +195,21 @@ class DrivingClient(DrivingController):
         map = ""
         for i in range(7):
             map += "●" if area == i else "○"
+        return map
+
+    def print_area_value(self, point_arr):
+        map = ""
+        for i in range(len(point_arr)):
+            left = "   "
+            right = " || " if i == 0 or i == 5 else "   "
+            point = round(float(point_arr[i]), 1)
+            center = str(point) if abs(point_arr[i]) > 10 else " " + str(point)
+            center = center if point_arr[i] < 0 else " " + center
+            if point_arr[i] == max(point_arr):
+                center = "[" + center + "]"
+            else:
+                center = " " + center + " "
+            map += left + center + right
         return map
 
 if __name__ == '__main__':
