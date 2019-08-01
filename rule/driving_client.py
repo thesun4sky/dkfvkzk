@@ -160,7 +160,7 @@ class DrivingClient(DrivingController):
             point_arr[3] += curve_weight * (curve_point * 0.4)
             point_arr[2] -= curve_weight * (curve_point * 0.6)
             point_arr[1] -= curve_weight * (curve_point * 0.8)
-            point_arr[0] -= curve_weight * (curve_point if front_curve_angles > 0 else -10)
+            point_arr[0] -= curve_weight * (curve_point if front_curve_angles > 0 else 10)
 
     def set_obstacles_point(self, i, my_area, point_arr, sensing_info):
         if len(sensing_info.track_forward_obstacles):
@@ -187,14 +187,18 @@ class DrivingClient(DrivingController):
 
     def set_map_specified_point(self, point_arr, sensing_info):
         if self.map_code == 3:
-            if 8.5 < sensing_info.lap_progress < 10.0:
+            if 8.5 < sensing_info.lap_progress < 10.5:
+                point_arr[5] = 900
+            if 10.5 < sensing_info.lap_progress < 12.5:
+                point_arr[1] = 900
+            if 28.5 < sensing_info.lap_progress < 30.0:
                 point_arr[5] = 900
 
 
 
     def get_steering_to_area(self, sensing_info, my_area, ideal_area, i):
         area_diff = ideal_area - my_area
-        area_angle = sensing_info.track_forward_angles[i] - sensing_info.moving_angle
+        area_angle = sensing_info.track_forward_angles[i] - sensing_info.moving_angle - sensing_info.to_middle + area_diff
 
         steering = float(area_angle * (abs(area_diff) * 0.1 + 0.1) * (self.check_range-i) * 0.005)
         return steering
