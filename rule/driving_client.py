@@ -12,18 +12,17 @@ class DrivingClient(DrivingController):
         self.is_debug = False
         self.collision_flag = True
         self.start = time.time()
+        self.area_range = 0
         self.tick_count = 0
         self.ideal_count = 0
         self.totalSpeed = 0
-        self.map_code = 3
-        self.front_check_point = 3
-        self.check_range = 5
+        self.map_code = 0       # 맵 구분 코드
+        self.front_check_point = 3  # 이상위치 추출 시 활용할 해당 위치에서의 전방 커브 개수
+        self.check_range = 5    # 이상위치 추출 범위
         self.total_movement_value = 0
         self.total_area = 8     # 마지막 area index
         self.total_road = 7     # 도로 위 area 개수
-        self.area_range = self.half_road_limit/self.total_road  # 맵 등분 크기
         self.area_weight_array = [0, 0, 0, 0, 0, 0, 0, 0, 0] * self.check_range     # 이상 포인트 배열
-
         #
         # Editing area ends
         # ==========================================================#
@@ -52,13 +51,13 @@ class DrivingClient(DrivingController):
         throttle = 1
         brake = 0
         ideal_total_map = []
-        self.area_range = self.half_road_limit/5
 
+        self.area_range = self.half_road_limit/self.total_road  # 맵 등분 크기
         my_area = self.get_area(sensing_info.to_middle)
 
-        # if self.tick_count % 3 == 1:
-        #     for i in range(7):
-                # print("")
+        if self.tick_count % 3 == 1:
+            for i in range(7):
+                print("")
 
         for i in range(self.check_range):
             ideal_area, ideal_map = self.get_ideal_area(sensing_info, my_area, i)
@@ -67,7 +66,6 @@ class DrivingClient(DrivingController):
             throttle += self.get_throttle_to_area(sensing_info, my_area, ideal_area, i)
             brake += self.get_brake_to_area(sensing_info, my_area, ideal_area, i)
 
-        # Moving straight forward
         ideal_area, ideal_map = self.get_ideal_area(sensing_info, my_area, 0)
         next_ideal_area, next_ideal_map = self.get_ideal_area(sensing_info, my_area, 1)
         steering = (sensing_info.moving_angle - self.get_ideal_angel(sensing_info, ideal_area, next_ideal_area)) / 90
@@ -155,7 +153,7 @@ class DrivingClient(DrivingController):
         return angle
 
     def get_ideal_area(self, sensing_info, my_area, i):
-        pos_weight = 0.3
+        pos_weight = 0.5
         curve_weight = 1.2
         # 가운데로 이동하도록 이상점 +
         point_arr = [-1, 1, 2, 2, 3, 2, 2, 1, -1]
@@ -200,27 +198,26 @@ class DrivingClient(DrivingController):
         if len(sensing_info.track_forward_obstacles):
             for obj in sensing_info.track_forward_obstacles:
                 obj_dist = int(obj['dist'] / 10)
-                if i <= obj_dist <= i + 3 or obj_dist == i - 1:
+                if i <= obj_dist <= i + 4 or obj_dist == i - 1:
                     obj_area = self.get_area(obj['to_middle'])
                     if self.tick_count % 3 == 1:
                         print(self.print_area(obj_area))
-                        print("obj{} : {}".format(i, obj['to_middle']))
                     point_arr[obj_area] += -90
                     if obj_area >= 1:
-                        point_arr[obj_area - 1] += -80
+                        point_arr[obj_area - 1] += -8
                     if obj_area <= self.total_road:
-                        point_arr[obj_area + 1] += -80
+                        point_arr[obj_area + 1] += -8
                     if obj_dist < 40 and abs(obj['to_middle'] - sensing_info.to_middle) < 2:
                         if obj_area >= 2: # 맵 왼쪽에서 두칸 안쪽
-                            point_arr[obj_area - 2] += -70
-                        if obj_area <= 6: # 맵 오른쪽에서 두칸 안쪽
-                            point_arr[obj_area + 2] += -70
+                            point_arr[obj_area - 2] += -7
+                        if obj_area <= self.total_area - 2: # 맵 오른쪽에서 두칸 안쪽
+                            point_arr[obj_area + 2] += -7
                     if obj_area >= my_area:
-                        for j in range(self.total_area - obj_area):
-                            point_arr[obj_area + j] += -60
+                        for j in range(9 - obj_area):
+                            point_arr[obj_area + j] += -6
                     else:
                         for j in range(obj_area + 1):
-                            point_arr[obj_area - j] += -60
+                            point_arr[obj_area - j] += -6
 
     def set_map_specified_point(self, point_arr, sensing_info):
         if self.map_code == 3:
