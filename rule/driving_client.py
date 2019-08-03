@@ -69,8 +69,9 @@ class DrivingClient(DrivingController):
 
         ideal_area, ideal_map = self.get_ideal_area(sensing_info, my_area, 0)
         next_ideal_area, next_ideal_map = self.get_ideal_area(sensing_info, my_area, 1)
-        steering = (sensing_info.moving_angle - self.get_ideal_angel(sensing_info, ideal_area, next_ideal_area)) / 90
-        print("steering: {}".format(steering))
+        steering = (self.get_ideal_angel(sensing_info, ideal_area, next_ideal_area) - sensing_info.moving_angle) / 90
+        # print("moving: {}".format(sensing_info.moving_angle))
+        # print("steering: {}".format(steering))
 
         car_controls.steering = steering
         car_controls.throttle = throttle
@@ -80,9 +81,9 @@ class DrivingClient(DrivingController):
             for j in range(self.check_range):
                 i = self.check_range-j-1
                 print(ideal_total_map[i])
-            print(sensing_info.lap_progress)
-            print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
-                                                              car_controls.brake))
+            # print(sensing_info.lap_progress)
+            # print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
+            #                                                   car_controls.brake))
 
         if sensing_info.lap_progress == 100:
             print("time :", time.time() - self.start)
@@ -125,8 +126,8 @@ class DrivingClient(DrivingController):
     def get_forward_movement_value(self, angle, speed, moving_forward):
         movement_value = numpy.sin(numpy.radians(90 - abs(angle))) * speed / 3.6 * 0.1
         self.total_movement_value += movement_value if moving_forward else -movement_value
-        print(movement_value)
-        print(self.total_movement_value)
+        # print(movement_value)
+        # print(self.total_movement_value)
         return movement_value
 
     def get_ideal_angel(self, sensing_info, ideal_area, next_ideal_area):
@@ -138,23 +139,23 @@ class DrivingClient(DrivingController):
         d = 10 - self.get_distance_next_waypoint(sensing_info)
         p = d * 0.1 * (next_ideal_position - ideal_position) + ideal_position
         w = 10
-        y = sensing_info.to_middle - p
+        y = p - sensing_info.to_middle
         x = (w**2 + y**2) ** 0.5
         # print(2 * x * y)
         angle = numpy.degrees(numpy.arccos((x**2 + y**2 - w**2) / (2 * x * abs(y))))
 
-        print("i: {}, n: {}, p: {}, d: {}, m: {}, y: {}, w: {}, x: {}".format(ideal_position, next_ideal_position, p, d, sensing_info.to_middle, y, w, x))
-        print("angle: {}".format(angle))
+        # print("i: {}, n: {}, p: {}, d: {}, m: {}, y: {}, w: {}, x: {}".format(ideal_position, next_ideal_position, p, d, sensing_info.to_middle, y, w, x))
+        # print("angle: {}".format(angle))
         if y < 0:
             angle = -90 + angle
         else:
             angle = 90 - angle
-        print("angle: {}".format(angle))
+        # print("angle: {}".format(angle))
 
         return angle
 
     def get_ideal_area(self, sensing_info, my_area, i):
-        pos_weight = 0.5
+        pos_weight = 0.7 * (self.check_range - i)
         curve_weight = 1.2
         # 가운데로 이동하도록 이상점 +
         point_arr = [-1, 1, 2, 2, 3, 2, 2, 1, -1]
@@ -201,8 +202,8 @@ class DrivingClient(DrivingController):
                 obj_dist = int(obj['dist'] / 10)
                 if i <= obj_dist <= i + 4 or obj_dist == i - 1:
                     obj_area = self.get_area(obj['to_middle'])
-                    if self.tick_count % 3 == 1:
-                        print(self.print_area(obj_area))
+                    # if self.tick_count % 3 == 1:
+                        # print(self.print_area(obj_area))
                     point_arr[obj_area] += -90
                     if obj_area >= 1:
                         point_arr[obj_area - 1] += -8
@@ -221,10 +222,10 @@ class DrivingClient(DrivingController):
                             point_arr[obj_area - j] += -6
 
     def set_map_specified_point(self, point_arr, sensing_info):
-        if self.map_code == 3:
-            if 8.5 < sensing_info.lap_progress < 10.5:
+        if self.map_code == 30:
+            if 8.5 < sensing_info.lap_progress < 9.5:
                 point_arr[self.total_road] = 900
-            if 10.5 < sensing_info.lap_progress < 12.5:
+            if 9.5 < sensing_info.lap_progress < 11.5:
                 point_arr[1] = 900
             if 28.5 < sensing_info.lap_progress < 30.0:
                 point_arr[self.total_road] = 900
