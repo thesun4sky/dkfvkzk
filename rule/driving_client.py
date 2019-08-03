@@ -1,6 +1,6 @@
 from drive_controller import DrivingController
+import numpy
 import time
-
 
 class DrivingClient(DrivingController):
     def __init__(self):
@@ -19,6 +19,7 @@ class DrivingClient(DrivingController):
         self.front_check_point = 3
         self.check_range = 5
         self.total_area = 7
+        self.total_movement_value = 0
         self.area_weight_array = [0, 0, 0, 0, 0, 0, 0] * self.check_range
 
         #
@@ -53,9 +54,9 @@ class DrivingClient(DrivingController):
 
         my_area = self.get_area(sensing_info.to_middle)
 
-        if self.tick_count % 3 == 1:
-            for i in range(7):
-                print("")
+        # if self.tick_count % 3 == 1:
+        #     for i in range(7):
+                # print("")
 
         for i in range(self.check_range):
             ideal_area, ideal_map = self.get_ideal_area(sensing_info, my_area, i)
@@ -65,18 +66,26 @@ class DrivingClient(DrivingController):
             brake += self.get_brake_to_area(sensing_info, my_area, ideal_area, i)
 
         # Moving straight forward
+        ideal_area, ideal_map = self.get_ideal_area(sensing_info, my_area, 0)
+        next_ideal_area, next_ideal_map = self.get_ideal_area(sensing_info, my_area, 1)
+        steering = (sensing_info.moving_angle - self.get_ideal_angel(sensing_info, ideal_area, next_ideal_area)) / 90
+        print("steering: {}".format(steering))
         car_controls.steering = steering
         car_controls.throttle = throttle
         car_controls.brake = brake
 
-        if self.tick_count % 3 == 1:
-            for j in range(self.check_range):
-                i = self.check_range-j-1
-                print(ideal_total_map[i])
-            print(sensing_info.lap_progress)
-            print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
-                                                              car_controls.brake))
+        # print("!!!!!!!!!!!!!!!")
+        # self.get_forward_movement_value(sensing_info.moving_angle, sensing_info.speed, sensing_info.moving_forward)
 
+        # print("!!!!!!!!!!!!!!!")
+
+        # if self.tick_count % 3 == 1:
+        #     for j in range(self.check_range):
+        #         i = self.check_range-j-1
+                # print(ideal_total_map[i])
+            # print(sensing_info.lap_progress)
+            # print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
+            #                                                   car_controls.brake))
 
         if sensing_info.lap_progress == 100:
             print("time :", time.time() - self.start)
@@ -122,6 +131,40 @@ class DrivingClient(DrivingController):
             return 6
         return 0
 
+    def get_distance_next_waypoint(self, sensing_info):
+        return (sensing_info.distance_to_way_points[0]**2 - sensing_info.to_middle**2) ** 0.5
+
+    def get_forward_movement_value(self, angle, speed, moving_forward):
+        movement_value = numpy.sin(numpy.radians(90 - abs(angle))) * speed / 3.6 * 0.1
+        self.total_movement_value += movement_value if moving_forward else -movement_value
+        print(movement_value)
+        print(self.total_movement_value)
+        return movement_value
+
+    def get_ideal_angel(self, sensing_info, ideal_area, next_ideal_area):
+        # sin : 전방 값
+        # cos : 좌우 값
+        ideal_position = (ideal_area - 3) * self.half_road_limit / 7
+        next_ideal_position = (next_ideal_area - 3) * self.half_road_limit / 7
+
+        d = 10 - self.get_distance_next_waypoint(sensing_info)
+        p = d * 0.1 * (next_ideal_position - ideal_position) + ideal_position
+        w = 10
+        y = sensing_info.to_middle - p
+        x = (w**2 + y**2) ** 0.5
+        # print(2 * x * y)
+        angle = numpy.degrees(numpy.arccos((x**2 + y**2 - w**2) / (2 * x * abs(y))))
+
+        print("i: {}, n: {}, p: {}, d: {}, m: {}, y: {}, w: {}, x: {}".format(ideal_position, next_ideal_position, p, d, sensing_info.to_middle, y, w, x))
+        print("angle: {}".format(angle))
+        if y < 0:
+            angle = -90 + angle
+        else:
+            angle = 90 - angle
+        print("angle: {}".format(angle))
+
+        return angle
+
     def get_ideal_area(self, sensing_info, my_area, i):
         pos_weight = 0.3
         curve_weight = 1.2
@@ -160,7 +203,7 @@ class DrivingClient(DrivingController):
             point_arr[3] += curve_weight * (curve_point * 0.4)
             point_arr[2] -= curve_weight * (curve_point * 0.6)
             point_arr[1] -= curve_weight * (curve_point * 0.8)
-            point_arr[0] -= curve_weight * (curve_point if front_curve_angles > 0 else -10)
+            point_arr[0] -= curve_weight * (curve_point if front_curve_angles > 0 else 10)
 
     def set_obstacles_point(self, i, my_area, point_arr, sensing_info):
         if len(sensing_info.track_forward_obstacles):
@@ -187,14 +230,18 @@ class DrivingClient(DrivingController):
 
     def set_map_specified_point(self, point_arr, sensing_info):
         if self.map_code == 3:
-            if 8.5 < sensing_info.lap_progress < 10.0:
+            if 8.5 < sensing_info.lap_progress < 10.5:
+                point_arr[5] = 900
+            if 10.5 < sensing_info.lap_progress < 12.5:
+                point_arr[1] = 900
+            if 28.5 < sensing_info.lap_progress < 30.0:
                 point_arr[5] = 900
 
 
 
     def get_steering_to_area(self, sensing_info, my_area, ideal_area, i):
         area_diff = ideal_area - my_area
-        area_angle = sensing_info.track_forward_angles[i] - sensing_info.moving_angle
+        area_angle = sensing_info.track_forward_angles[i] - sensing_info.moving_angle - sensing_info.to_middle + area_diff
 
         steering = float(area_angle * (abs(area_diff) * 0.1 + 0.1) * (self.check_range-i) * 0.005)
         return steering
