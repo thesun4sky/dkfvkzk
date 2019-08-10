@@ -28,6 +28,8 @@ class DrivingClient(DrivingController):
         self.collision_flag = True  # 계속 막혀있는 상태인지 확인
         self.collision_time = 0  # 복귀로직 tick stack
         self.stopped_back = 0 # 후진/전진시 속도가 10이상 안나오는지 확인
+        self.double_curve_detected = False  # S자코스 감지여부
+        self.dc_forward_angles = []
         #
         # Editing area ends
         # ==========================================================#
@@ -89,7 +91,7 @@ class DrivingClient(DrivingController):
             # print(sensing_info.lap_progress)
             # print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
             #                                                   car_controls.brake))
-        self.recovery(self, car_controls, sensing_info)
+        self.recovery(car_controls, sensing_info)
         if sensing_info.lap_progress == 100:
             print("time :", time.time() - self.start)
 
@@ -111,7 +113,7 @@ class DrivingClient(DrivingController):
         for i in range(start, end+1):
             ideal, ideal_map = self.get_ideal_area(sensing_info, my_area, i)
             arr.append(ideal)
-        avg = int(numpy.mean(arr))
+        avg = round(float(numpy.mean(arr)), 0)
 
         # 급커브 아웃코스 타기
         if 80 < sensing_info.speed:
@@ -119,12 +121,12 @@ class DrivingClient(DrivingController):
             front_curve_angle = numpy.mean(sensing_info.track_forward_angles[0:speed_index-6])
             future_curve_angle = numpy.mean(sensing_info.track_forward_angles[speed_index-3:speed_index-2])
             if abs(front_curve_angle) < 10 and abs(future_curve_angle) > 40:
-                print("before avg : {}, front_curve_angle : {}, future_curve_angle : {} ".format(avg, front_curve_angle, future_curve_angle))
+                # print("before avg : {}, front_curve_angle : {}, future_curve_angle : {} ".format(avg, front_curve_angle, future_curve_angle))
                 avg += int((sensing_info.speed/20) * -(future_curve_angle/abs(future_curve_angle)))
-                print("avg : {}", avg)
-                if avg <= 0:
+                # print("avg : {}", avg)
+                if avg < 1:
                     avg = 1
-                elif avg >= 8:
+                elif avg > 8:
                     avg = 8
 
         return avg
@@ -188,6 +190,9 @@ class DrivingClient(DrivingController):
         # 가운데로 이동하도록 이상점 +
         point_arr = [-1, 1, 2, 2, 3, 2, 2, 1, -1]
 
+        # S자 코스 각도 사전처리
+        self.set_double_curve_angle(point_arr, sensing_info)
+
         # 현재위치에서 가까울수록 이상점수 +
         self.set_near_my_area_point(my_area, point_arr, pos_weight)
 
@@ -202,6 +207,20 @@ class DrivingClient(DrivingController):
 
         return point_arr.index(max(point_arr)), self.print_area_value(point_arr)
 
+    def set_double_curve_angle(self, point_arr, sensing_info):
+
+        if self.double_curve_detected:
+            if abs(sensing_info.track_forward_angles[1]) < 10 and abs(sensing_info.track_forward_angles[3]) < 10\
+                    and abs(sensing_info.track_forward_angles[5]) < 10:
+                # print("#################################### S코스 detected 해제")
+                self.double_curve_detected = False
+        else:
+            if sensing_info.track_forward_angles[4] * sensing_info.track_forward_angles[6] < 0:
+                # print("#################################### S코스 detected")
+                self.double_curve_detected = True
+                for angle in sensing_info.track_forward_angles:
+                    self.dc_forward_angles.append(round(angle * 0.2, 0))
+
     def set_near_my_area_point(self, my_area, point_arr, pos_weight):
         point_arr[my_area] += pos_weight * 2
         if my_area < self.total_road:
@@ -210,7 +229,8 @@ class DrivingClient(DrivingController):
             point_arr[my_area - 1] += pos_weight
 
     def set_curve_point(self, curve_weight, i, point_arr, sensing_info):
-        front_curve_angles = sum(sensing_info.track_forward_angles[i:i + self.front_check_point])
+        forward_angles = self.dc_forward_angles if self.double_curve_detected else sensing_info.track_forward_angles
+        front_curve_angles = sum(forward_angles[i:i + self.front_check_point])
         if abs(front_curve_angles) > 30:
             direction = 1 if front_curve_angles > 0 else -1
             curve_point = (pow(front_curve_angles, 2) / 2000 + 2.3) * direction
