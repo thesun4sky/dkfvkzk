@@ -14,6 +14,10 @@ class DrivingClient(DrivingController):
         self.start = time.time()
         self.tickCount = 0
         self.totalSpeed = 0
+        self.wrong_way_flag = False
+        self.collision_flag = True
+        self.collision_time = 0
+        self.stopped_back = 0
 
         #
         # Editing area ends
@@ -92,6 +96,43 @@ class DrivingClient(DrivingController):
             self.totalSpeed += sensing_info.speed
             self.tickCount += 1
             print("avgSpeed : {}", self.totalSpeed / self.tickCount)
+
+        if sensing_info.moving_forward is False:
+            if self.wrong_way_flag is False:
+                self.wrong_way_flag = True
+                if sensing_info.to_middle > 0:
+                    self.steering_while_return = 1
+                else:
+                    self.steering_while_return = -1
+            else:
+                car_controls.steering = self.steering_while_return
+        else:
+            self.wrong_way_flag = False
+            self.steering_while_return = 0
+
+        if sensing_info.collided == True or self.collision_time > 0:
+            if self.collision_flag is True:
+                self.collision_flag = False
+            else:
+                self.collision_flag = False
+                self.collision_time += 1
+                if sensing_info.speed < -10 or sensing_info.speed > 10:
+                    self.stopped_back += 1
+                if self.collision_time < 13:
+                    car_controls.throttle = -1
+                    car_controls.steering = sensing_info.to_middle
+                elif self.collision_time < 20:
+                    car_controls.throttle = 1
+                elif self.stopped_back < 1 and self.collision_time < 200:
+                    car_controls.throttle = -1
+                    car_controls.steering = 0
+                else:
+                    self.collision_time = 0
+                    self.collision_flag = True
+                    self.soppted_back = 0
+
+        else:
+            self.collision_flag is True
         #
         # Editing area ends
         # ==========================================================#
