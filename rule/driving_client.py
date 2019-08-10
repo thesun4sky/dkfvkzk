@@ -24,6 +24,10 @@ class DrivingClient(DrivingController):
         self.total_area = 8     # 마지막 area index
         self.total_road = 7     # 도로 위 area 개수
         self.area_weight_array = [0, 0, 0, 0, 0, 0, 0, 0, 0] * self.check_range     # 이상 포인트 배열
+        self.wrong_way_flag = False  # 복귀 여부 확인
+        self.collision_flag = True  # 계속 막혀있는 상태인지 확인
+        self.collision_time = 0  # 복귀로직 tick stack
+        self.stopped_back = 0 # 후진/전진시 속도가 10이상 안나오는지 확인
         #
         # Editing area ends
         # ==========================================================#
@@ -85,7 +89,7 @@ class DrivingClient(DrivingController):
             # print(sensing_info.lap_progress)
             # print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
             #                                                   car_controls.brake))
-
+        self.recovery(self, car_controls, sensing_info)
         if sensing_info.lap_progress == 100:
             print("time :", time.time() - self.start)
 
@@ -293,6 +297,44 @@ class DrivingClient(DrivingController):
                 center = " " + center + " "
             map += left + center + right
         return map
+
+    def recovery(self, car_controls, sensing_info):
+        if sensing_info.moving_forward is False:
+            if self.wrong_way_flag is False:
+                self.wrong_way_flag = True
+                if sensing_info.to_middle > 0:
+                    self.steering_while_return = 1
+                else:
+                    self.steering_while_return = -1
+            else:
+                car_controls.steering = self.steering_while_return
+        else:
+            self.wrong_way_flag = False
+            self.steering_while_return = 0
+
+        if sensing_info.collided == True or self.collision_time > 0:
+            if self.collision_flag is True:
+                self.collision_flag = False
+            else:
+                self.collision_flag = False
+                self.collision_time += 1
+                if sensing_info.speed < -10 or sensing_info.speed > 10:
+                    self.stopped_back += 1
+                if self.collision_time < 13:
+                    car_controls.throttle = -1
+                    car_controls.steering = sensing_info.to_middle
+                elif self.collision_time < 20:
+                    car_controls.throttle = 1
+                elif self.stopped_back < 1 and self.collision_time < 200:
+                    car_controls.throttle = -1
+                    car_controls.steering = 0
+                else:
+                    self.collision_time = 0
+                    self.collision_flag = True
+                    self.soppted_back = 0
+
+        else:
+            self.collision_flag is True
 
 if __name__ == '__main__':
     client = DrivingClient()
