@@ -67,8 +67,9 @@ class DrivingClient(DrivingController):
             throttle += self.get_throttle_to_area(sensing_info, my_area, ideal_area, i)
             brake += self.get_brake_to_area(sensing_info, my_area, ideal_area, i)
 
-        ideal_area, ideal_map = self.get_ideal_area(sensing_info, my_area, 0)
-        next_ideal_area, next_ideal_map = self.get_ideal_area(sensing_info, my_area, 1)
+        ideal_area = self.get_speed_ideal_area(my_area, sensing_info, 0, 3)
+        next_ideal_area = self.get_speed_ideal_area(my_area, sensing_info, 2, 4)
+        print("now: {}, next: {}".format(ideal_area, next_ideal_area))
         steering = (self.get_ideal_angel(sensing_info, ideal_area, next_ideal_area) - sensing_info.moving_angle) / 90
         # print("moving: {}".format(sensing_info.moving_angle))
         # print("steering: {}".format(steering))
@@ -80,7 +81,7 @@ class DrivingClient(DrivingController):
         if self.tick_count % 3 == 1:
             for j in range(self.check_range):
                 i = self.check_range-j-1
-                print(ideal_total_map[i])
+                # print(ideal_total_map[i])
             # print(sensing_info.lap_progress)
             # print("steering:{}, throttle:{}, brake:{}".format(car_controls.steering, car_controls.throttle,
             #                                                   car_controls.brake))
@@ -100,6 +101,27 @@ class DrivingClient(DrivingController):
         # Editing area ends
         # ==========================================================#
         return car_controls
+
+    def get_speed_ideal_area(self, my_area, sensing_info, start, end):
+        arr = []
+        for i in range(start, end+1):
+            ideal, ideal_map = self.get_ideal_area(sensing_info, my_area, i)
+            arr.append(ideal)
+        avg = int(numpy.mean(arr))
+
+        if 60 < sensing_info.speed < 120:
+            front_curve_angle = numpy.mean(sensing_info.track_forward_angles[0:int(sensing_info.speed/10)-2])
+            future_curve_angle = numpy.mean(sensing_info.track_forward_angles[int(sensing_info.speed/10)-2:10])
+            if abs(front_curve_angle) < 10 and abs(future_curve_angle) > 40:
+                avg += int((sensing_info.speed/40) * -(future_curve_angle/100))
+                if avg <= 0:
+                    avg = 1
+                elif avg >= 9:
+                    avg = 8
+                # print("front : {} , future : {}".format(front_curve_angle, future_curve_angle))
+                # print("speed_ideal!!! : {}", avg)
+
+        return avg
 
     # ============================
     # If you have NOT changed the <settings.json> file
@@ -133,8 +155,8 @@ class DrivingClient(DrivingController):
     def get_ideal_angel(self, sensing_info, ideal_area, next_ideal_area):
         # sin : 전방 값
         # cos : 좌우 값
-        ideal_position = (ideal_area - 3) * self.half_road_limit / 7
-        next_ideal_position = (next_ideal_area - 3) * self.half_road_limit / 7
+        ideal_position = (ideal_area - 4) * self.half_road_limit / 9
+        next_ideal_position = (next_ideal_area - 4) * self.half_road_limit / 9
 
         d = 10 - self.get_distance_next_waypoint(sensing_info)
         p = d * 0.1 * (next_ideal_position - ideal_position) + ideal_position
