@@ -113,17 +113,19 @@ class DrivingClient(DrivingController):
             arr.append(ideal)
         avg = int(numpy.mean(arr))
 
-        if 60 < sensing_info.speed < 120:
-            front_curve_angle = numpy.mean(sensing_info.track_forward_angles[0:int(sensing_info.speed/10)-2])
-            future_curve_angle = numpy.mean(sensing_info.track_forward_angles[int(sensing_info.speed/10)-2:10])
+        # 급커브 아웃코스 타기
+        if 80 < sensing_info.speed:
+            speed_index = int(sensing_info.speed/10) if sensing_info.speed < 120 else 11
+            front_curve_angle = numpy.mean(sensing_info.track_forward_angles[0:speed_index-6])
+            future_curve_angle = numpy.mean(sensing_info.track_forward_angles[speed_index-3:speed_index-2])
             if abs(front_curve_angle) < 10 and abs(future_curve_angle) > 40:
-                avg += int((sensing_info.speed/40) * -(future_curve_angle/100))
+                print("before avg : {}, front_curve_angle : {}, future_curve_angle : {} ".format(avg, front_curve_angle, future_curve_angle))
+                avg += int((sensing_info.speed/20) * -(future_curve_angle/abs(future_curve_angle)))
+                print("avg : {}", avg)
                 if avg <= 0:
                     avg = 1
-                elif avg >= 9:
+                elif avg >= 8:
                     avg = 8
-                # print("front : {} , future : {}".format(front_curve_angle, future_curve_angle))
-                # print("speed_ideal!!! : {}", avg)
 
         return avg
 
